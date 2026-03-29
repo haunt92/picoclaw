@@ -1,0 +1,36 @@
+FROM node:22-alpine AS frontend-builder
+
+WORKDIR /src/web/frontend
+
+COPY web/frontend/package.json web/frontend/pnpm-lock.yaml ./
+RUN corepack enable && pnpm install --frozen-lockfile
+
+COPY web/frontend/ ./
+RUN pnpm build:backend
+
+FROM golang:1.25-alpine AS backend-builder
+
+RUN apk add --no-cache git make
+
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+COPY --from=frontend-builder /src/web/backend/dist /src/web/backend/dist
+
+RUN make build
+RUN go build -v -tags goolm,stdjson -o /src/build/picoclaw-launcher ./web/backend
+RUN go build -v -tags goolm,stdjson -o /src/build/picoclaw-launcher-tui ./cmd/picoclaw-launcher-tui
+
+FROM alpine:3.23
+
+RUN apk add --no-cache ca-certificates tzdata
+
+COPY --from=backend-builder /src/build/picoclaw /usr/local/bin/picoclaw
+COPY --from=backend-builder /src/build/picoclaw-launcher /usr/local/bin/picoclaw-launcher
+COPY --from=backend-builder /src/build/picoclaw-launcher-tui /usr/local/bin/picoclaw-launcher-tui
+
+ENTRYPOINT ["picoclaw-launcher"]
+CMD ["-public", "-no-browser"]

@@ -64,11 +64,7 @@ func (h *Handler) gatewayProxyURL() *url.URL {
 	}
 }
 
-func requestHostName(r *http.Request) string {
-	reqHost, _, err := net.SplitHostPort(r.Host)
-	if err == nil {
-		return reqHost
-	}
+func requestHost(r *http.Request) string {
 	if strings.TrimSpace(r.Host) != "" {
 		return r.Host
 	}
@@ -96,7 +92,7 @@ func requestWSScheme(r *http.Request) string {
 func (h *Handler) buildWsURL(r *http.Request, cfg *config.Config) string {
 	host := h.effectiveGatewayBindHost(cfg)
 	if host == "" || host == "0.0.0.0" {
-		host = requestHostName(r)
+		return requestWSScheme(r) + "://" + requestHost(r) + "/pico/ws"
 	}
 	// Use web server port instead of gateway port to avoid exposing extra ports
 	// The WebSocket connection will be proxied by the backend to the gateway

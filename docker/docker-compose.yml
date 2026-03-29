@@ -5,7 +5,7 @@ services:
   # ─────────────────────────────────────────────
   picoclaw-agent:
     image: docker.io/sipeed/picoclaw:latest
-    container_name: picoclaw-agent
+    container_name: picoclaw-agent-cloudflare
     profiles:
       - agent
     # Uncomment to access host network; leave commented unless needed.
@@ -23,8 +23,8 @@ services:
   # ─────────────────────────────────────────────
   picoclaw-gateway:
     image: docker.io/sipeed/picoclaw:latest
-    container_name: picoclaw-gateway
-    restart: on-failure
+    container_name: picoclaw-gateway-cloudflare
+    restart: unless-stopped
     profiles:
       - gateway
     # Uncomment to access host network; leave commented unless needed.
@@ -38,8 +38,11 @@ services:
   #   docker compose -f docker/docker-compose.yml --profile launcher up
   # ─────────────────────────────────────────────
   picoclaw-launcher:
-    image: docker.io/sipeed/picoclaw:launcher
-    container_name: picoclaw-launcher
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.launcher-local
+    image: picoclaw-launcher-local:latest
+    container_name: picoclaw-launcher-cloudflare
     restart: on-failure
     profiles:
       - launcher

@@ -230,6 +230,7 @@ func TestExchangeCodeForTokens(t *testing.T) {
 }
 
 func TestRefreshAccessToken(t *testing.T) {
+	var gotScope string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/oauth/token" {
 			http.Error(w, "not found", http.StatusNotFound)
@@ -241,6 +242,7 @@ func TestRefreshAccessToken(t *testing.T) {
 			http.Error(w, "invalid grant_type", http.StatusBadRequest)
 			return
 		}
+		gotScope = r.FormValue("scope")
 
 		resp := map[string]any{
 			"access_token":  "refreshed-access-token",
@@ -254,6 +256,7 @@ func TestRefreshAccessToken(t *testing.T) {
 	cfg := OAuthProviderConfig{
 		Issuer:   server.URL,
 		ClientID: "test-client",
+		Scopes:   "scope-a scope-b",
 	}
 
 	cred := &AuthCredential{
@@ -273,6 +276,9 @@ func TestRefreshAccessToken(t *testing.T) {
 	}
 	if refreshed.RefreshToken != "refreshed-refresh-token" {
 		t.Errorf("RefreshToken = %q, want %q", refreshed.RefreshToken, "refreshed-refresh-token")
+	}
+	if gotScope != "scope-a scope-b" {
+		t.Errorf("scope = %q, want %q", gotScope, "scope-a scope-b")
 	}
 }
 

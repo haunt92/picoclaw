@@ -264,10 +264,14 @@ func setupAndStartServices(
 	if err != nil {
 		return nil, fmt.Errorf("error setting up cron service: %w", err)
 	}
-	if err = runningServices.CronService.Start(); err != nil {
-		return nil, fmt.Errorf("error starting cron service: %w", err)
+	if runningServices.CronService != nil {
+		if err = runningServices.CronService.Start(); err != nil {
+			return nil, fmt.Errorf("error starting cron service: %w", err)
+		}
+		fmt.Println("✓ Cron service started")
+	} else {
+		fmt.Println("⚠ Cron tool disabled; cron service not started")
 	}
-	fmt.Println("✓ Cron service started")
 
 	runningServices.HeartbeatService = heartbeat.NewHeartbeatService(
 		cfg.WorkspacePath(),
@@ -463,10 +467,14 @@ func restartServices(
 	if err != nil {
 		return fmt.Errorf("error restarting cron service: %w", err)
 	}
-	if err = runningServices.CronService.Start(); err != nil {
-		return fmt.Errorf("error restarting cron service: %w", err)
+	if runningServices.CronService != nil {
+		if err = runningServices.CronService.Start(); err != nil {
+			return fmt.Errorf("error restarting cron service: %w", err)
+		}
+		fmt.Println("  ✓ Cron service restarted")
+	} else {
+		fmt.Println("  ⚠ Cron tool disabled; cron service not restarted")
 	}
-	fmt.Println("  ✓ Cron service restarted")
 
 	runningServices.HeartbeatService = heartbeat.NewHeartbeatService(
 		cfg.WorkspacePath(),
@@ -617,27 +625,22 @@ func setupCronTool(
 	execTimeout time.Duration,
 	cfg *config.Config,
 ) (*cron.CronService, error) {
-	cronStorePath := filepath.Join(workspace, "cron", "jobs.json")
+	if !cfg.Tools.IsToolEnabled("cron") {
+		return nil, nil
+	}
 
+	cronStorePath := filepath.Join(workspace, "cron", "jobs.json")
 	cronService := cron.NewCronService(cronStorePath, nil)
 
-	var cronTool *tools.CronTool
-	if cfg.Tools.IsToolEnabled("cron") {
-		var err error
-		cronTool, err = tools.NewCronTool(cronService, agentLoop, msgBus, workspace, restrict, execTimeout, cfg)
-		if err != nil {
-			return nil, fmt.Errorf("critical error during CronTool initialization: %w", err)
-		}
-
-		agentLoop.RegisterTool(cronTool)
+	cronTool, err := tools.NewCronTool(cronService, agentLoop, msgBus, workspace, restrict, execTimeout, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("critical error during CronTool initialization: %w", err)
 	}
 
-	if cronTool != nil {
-		cronService.SetOnJob(func(job *cron.CronJob) (string, error) {
-			result := cronTool.ExecuteJob(context.Background(), job)
-			return result, nil
-		})
-	}
+	agentLoop.RegisterTool(cronTool)
+	cronService.SetOnJob(func(job *cron.CronJob) (string, error) {
+		return cronTool.ExecuteJob(context.Background(), job)
+	})
 
 	return cronService, nil
 }

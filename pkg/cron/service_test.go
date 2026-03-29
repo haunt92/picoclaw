@@ -1,6 +1,7 @@
 package cron
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -191,6 +192,50 @@ func TestCronService_PersistenceIntegrity(t *testing.T) {
 	err := cs3.loadStore()
 	if err == nil {
 		t.Error("Should return error when loading invalid JSON")
+	}
+}
+
+func TestCronService_StartPreservesPersistedNextRun(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "jobs.json")
+	future := time.Now().Add(10 * time.Minute).UnixMilli()
+
+	store := CronStore{
+		Version: 1,
+		Jobs: []CronJob{
+			{
+				ID:      "job-1",
+				Name:    "persisted",
+				Enabled: true,
+				Schedule: CronSchedule{
+					Kind: "every", EveryMS: int64Ptr(60000),
+				},
+				State: CronJobState{
+					NextRunAtMS: &future,
+				},
+			},
+		},
+	}
+
+	data, err := json.Marshal(store)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+	if err := os.WriteFile(tmpFile, data, 0o600); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	cs := NewCronService(tmpFile, nil)
+	if err := cs.Start(); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+	defer cs.Stop()
+
+	jobs := cs.ListJobs(true)
+	if len(jobs) != 1 || jobs[0].State.NextRunAtMS == nil {
+		t.Fatalf("expected persisted next run to exist, got %+v", jobs)
+	}
+	if *jobs[0].State.NextRunAtMS != future {
+		t.Fatalf("NextRunAtMS = %d, want %d", *jobs[0].State.NextRunAtMS, future)
 	}
 }
 

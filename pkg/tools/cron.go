@@ -296,7 +296,7 @@ func (t *CronTool) enableJob(args map[string]any, enable bool) *ToolResult {
 }
 
 // ExecuteJob executes a cron job through the agent
-func (t *CronTool) ExecuteJob(ctx context.Context, job *cron.CronJob) string {
+func (t *CronTool) ExecuteJob(ctx context.Context, job *cron.CronJob) (string, error) {
 	// Get channel/chatID from job payload
 	channel := job.Payload.Channel
 	chatID := job.Payload.To
@@ -315,12 +315,14 @@ func (t *CronTool) ExecuteJob(ctx context.Context, job *cron.CronJob) string {
 			output := "Error executing scheduled command: command execution is disabled"
 			pubCtx, pubCancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer pubCancel()
-			t.msgBus.PublishOutbound(pubCtx, bus.OutboundMessage{
+			if err := t.msgBus.PublishOutbound(pubCtx, bus.OutboundMessage{
 				Channel: channel,
 				ChatID:  chatID,
 				Content: output,
-			})
-			return "ok"
+			}); err != nil {
+				return "", err
+			}
+			return "ok", nil
 		}
 
 		args := map[string]any{
@@ -339,24 +341,28 @@ func (t *CronTool) ExecuteJob(ctx context.Context, job *cron.CronJob) string {
 
 		pubCtx, pubCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer pubCancel()
-		t.msgBus.PublishOutbound(pubCtx, bus.OutboundMessage{
+		if err := t.msgBus.PublishOutbound(pubCtx, bus.OutboundMessage{
 			Channel: channel,
 			ChatID:  chatID,
 			Content: output,
-		})
-		return "ok"
+		}); err != nil {
+			return "", err
+		}
+		return "ok", nil
 	}
 
 	// If deliver=true, send message directly without agent processing
 	if job.Payload.Deliver {
 		pubCtx, pubCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer pubCancel()
-		t.msgBus.PublishOutbound(pubCtx, bus.OutboundMessage{
+		if err := t.msgBus.PublishOutbound(pubCtx, bus.OutboundMessage{
 			Channel: channel,
 			ChatID:  chatID,
 			Content: job.Payload.Message,
-		})
-		return "ok"
+		}); err != nil {
+			return "", err
+		}
+		return "ok", nil
 	}
 
 	// For deliver=false, process through agent (for complex tasks)
@@ -371,10 +377,10 @@ func (t *CronTool) ExecuteJob(ctx context.Context, job *cron.CronJob) string {
 		chatID,
 	)
 	if err != nil {
-		return fmt.Sprintf("Error: %v", err)
+		return "", err
 	}
 
 	// Response is automatically sent via MessageBus by AgentLoop
 	_ = response // Will be sent by AgentLoop
-	return "ok"
+	return "ok", nil
 }

@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -27,6 +28,17 @@ func newTestCronToolWithConfig(t *testing.T, cfg *config.Config) *CronTool {
 func newTestCronTool(t *testing.T) *CronTool {
 	t.Helper()
 	return newTestCronToolWithConfig(t, config.DefaultConfig())
+}
+
+type fakeCronExecutor struct {
+	err error
+}
+
+func (f fakeCronExecutor) ProcessDirectWithChannel(
+	_ context.Context,
+	_, _, _, _ string,
+) (string, error) {
+	return "", f.err
 }
 
 // TestCronTool_CommandBlockedFromRemoteChannel verifies command scheduling is restricted to internal channels
@@ -219,7 +231,11 @@ func TestCronTool_ExecuteJobPublishesErrorWhenExecDisabled(t *testing.T) {
 	job.Payload.To = "direct"
 	job.Payload.Command = "df -h"
 
-	if got := tool.ExecuteJob(context.Background(), job); got != "ok" {
+	got, err := tool.ExecuteJob(context.Background(), job)
+	if err != nil {
+		t.Fatalf("ExecuteJob() error = %v", err)
+	}
+	if got != "ok" {
 		t.Fatalf("ExecuteJob() = %q, want ok", got)
 	}
 
@@ -235,5 +251,26 @@ func TestCronTool_ExecuteJobPublishesErrorWhenExecDisabled(t *testing.T) {
 	}
 	if !strings.Contains(msg.Content, "command execution is disabled") {
 		t.Fatalf("expected exec disabled message, got: %s", msg.Content)
+	}
+}
+
+func TestCronTool_ExecuteJobPropagatesAgentError(t *testing.T) {
+	tool := newTestCronTool(t)
+	tool.executor = fakeCronExecutor{err: errors.New("agent failed")}
+
+	job := &cron.CronJob{}
+	job.Payload.Channel = "telegram"
+	job.Payload.To = "chat-1"
+	job.Payload.Message = "remind me"
+
+	got, err := tool.ExecuteJob(context.Background(), job)
+	if err == nil {
+		t.Fatal("expected agent error to propagate")
+	}
+	if got != "" {
+		t.Fatalf("ExecuteJob() result = %q, want empty string on error", got)
+	}
+	if !strings.Contains(err.Error(), "agent failed") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

@@ -93,7 +93,7 @@ func (cs *CronService) Start() error {
 		return fmt.Errorf("failed to load store: %w", err)
 	}
 
-	cs.recomputeNextRuns()
+	cs.initializeNextRunsOnStart()
 	if err := cs.saveStoreUnsafe(); err != nil {
 		return fmt.Errorf("failed to save store: %w", err)
 	}
@@ -106,6 +106,30 @@ func (cs *CronService) Start() error {
 	go cs.runLoop(cs.stopChan)
 
 	return nil
+}
+
+func (cs *CronService) initializeNextRunsOnStart() {
+	now := time.Now().UnixMilli()
+	for i := range cs.store.Jobs {
+		job := &cs.store.Jobs[i]
+		if !job.Enabled {
+			job.State.NextRunAtMS = nil
+			continue
+		}
+
+		// Preserve persisted next-run state across restarts/reloads so due jobs
+		// are not silently postponed or skipped.
+		if job.State.NextRunAtMS != nil {
+			continue
+		}
+
+		if job.Schedule.Kind == "at" && job.Schedule.AtMS != nil {
+			job.State.NextRunAtMS = job.Schedule.AtMS
+			continue
+		}
+
+		job.State.NextRunAtMS = cs.computeNextRun(&job.Schedule, now)
+	}
 }
 
 func (cs *CronService) Stop() {

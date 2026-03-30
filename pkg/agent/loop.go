@@ -1219,7 +1219,16 @@ func (al *AgentLoop) ProcessDirectWithChannel(
 		SessionKey: sessionKey,
 	}
 
-	return al.processMessage(ctx, msg)
+	response, err := al.processMessage(ctx, msg)
+	if err != nil {
+		return "", err
+	}
+
+	// Direct invocations (for example cron jobs) bypass the main inbound loop,
+	// so they must publish their final response here.
+	al.publishResponseIfNeeded(ctx, channel, chatID, response)
+
+	return response, nil
 }
 
 // ProcessHeartbeat processes a heartbeat request without session history.

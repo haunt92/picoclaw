@@ -14,11 +14,15 @@ import (
 )
 
 func newTestCronToolWithConfig(t *testing.T, cfg *config.Config) *CronTool {
+	return newTestCronToolWithTimeout(t, cfg, 0)
+}
+
+func newTestCronToolWithTimeout(t *testing.T, cfg *config.Config, execTimeout time.Duration) *CronTool {
 	t.Helper()
 	storePath := filepath.Join(t.TempDir(), "cron.json")
 	cronService := cron.NewCronService(storePath, nil)
 	msgBus := bus.NewMessageBus()
-	tool, err := NewCronTool(cronService, nil, msgBus, t.TempDir(), true, 0, cfg)
+	tool, err := NewCronTool(cronService, nil, msgBus, t.TempDir(), true, execTimeout, cfg)
 	if err != nil {
 		t.Fatalf("NewCronTool() error: %v", err)
 	}
@@ -39,6 +43,16 @@ func (f fakeCronExecutor) ProcessDirectWithChannel(
 	_, _, _, _ string,
 ) (string, error) {
 	return "", f.err
+}
+
+type blockingCronExecutor struct{}
+
+func (blockingCronExecutor) ProcessDirectWithChannel(
+	ctx context.Context,
+	_, _, _, _ string,
+) (string, error) {
+	<-ctx.Done()
+	return "", ctx.Err()
 }
 
 // TestCronTool_CommandBlockedFromRemoteChannel verifies command scheduling is restricted to internal channels
@@ -272,5 +286,20 @@ func TestCronTool_ExecuteJobPropagatesAgentError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "agent failed") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCronTool_ExecuteJobAppliesExecTimeoutToAgentProcessing(t *testing.T) {
+	tool := newTestCronToolWithTimeout(t, config.DefaultConfig(), 25*time.Millisecond)
+	tool.executor = blockingCronExecutor{}
+
+	job := &cron.CronJob{}
+	job.Payload.Channel = "telegram"
+	job.Payload.To = "chat-1"
+	job.Payload.Message = "remind me"
+
+	_, err := tool.ExecuteJob(context.Background(), job)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected deadline exceeded, got %v", err)
 	}
 }

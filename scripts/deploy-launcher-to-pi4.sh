@@ -23,7 +23,7 @@ fi
 
 REPO_ROOT="$(cd "${REPO_ROOT}" && pwd)"
 
-PI_HOST="${PI_HOST:-192.168.1.67}"
+PI_HOST="${PI_HOST:-93.7.116.223}"
 PI_USER="${PI_USER:-haunt}"
 PI_PORT="${PI_PORT:-22}"
 PI_PROJECT_DIR="${PI_PROJECT_DIR:-/home/haunt/Projects/picoclaw_cloudflare}"

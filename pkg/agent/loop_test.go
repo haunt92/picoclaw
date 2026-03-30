@@ -2048,6 +2048,55 @@ func TestAgentLoop_EmptyModelResponseUsesAccurateFallback(t *testing.T) {
 	}
 }
 
+func TestProcessDirectWithChannel_PublishesOutboundResponse(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "agent-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Defaults: config.AgentDefaults{
+				Workspace:         tmpDir,
+				ModelName:         "test-model",
+				MaxTokens:         4096,
+				MaxToolIterations: 3,
+			},
+		},
+	}
+
+	msgBus := bus.NewMessageBus()
+	provider := &simpleMockProvider{response: "scheduled reply"}
+	al := NewAgentLoop(cfg, msgBus, provider)
+
+	response, err := al.ProcessDirectWithChannel(
+		context.Background(),
+		"send the scheduled update",
+		"cron-session",
+		"telegram",
+		"123456",
+	)
+	if err != nil {
+		t.Fatalf("ProcessDirectWithChannel failed: %v", err)
+	}
+	if response != "scheduled reply" {
+		t.Fatalf("response = %q, want %q", response, "scheduled reply")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	select {
+	case msg := <-msgBus.OutboundChan():
+		if msg.Channel != "telegram" || msg.ChatID != "123456" || msg.Content != "scheduled reply" {
+			t.Fatalf("unexpected outbound message: %+v", msg)
+		}
+	case <-ctx.Done():
+		t.Fatal("timeout waiting for outbound response")
+	}
+}
+
 func TestAgentLoop_ToolLimitUsesDedicatedFallback(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "agent-test-*")
 	if err != nil {

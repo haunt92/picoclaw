@@ -95,3 +95,30 @@ func resolvedModelConfig(cfg *config.Config, modelName, workspace string) (*conf
 
 	return &clone, nil
 }
+
+func resolvedModelConfigForCandidate(cfg *config.Config, provider, model, workspace string) (*config.ModelConfig, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("config is nil")
+	}
+
+	wantProvider := strings.TrimSpace(provider)
+	wantModel := strings.TrimSpace(model)
+	for i := range cfg.ModelList {
+		fullModel := strings.TrimSpace(cfg.ModelList[i].Model)
+		if fullModel == "" {
+			continue
+		}
+		haveProvider, haveModel := providers.ExtractProtocol(fullModel)
+		if haveProvider != wantProvider || haveModel != wantModel {
+			continue
+		}
+
+		clone := *cfg.ModelList[i]
+		if clone.Workspace == "" {
+			clone.Workspace = workspace
+		}
+		return &clone, nil
+	}
+
+	return nil, fmt.Errorf("model config not found for candidate %s/%s", wantProvider, wantModel)
+}

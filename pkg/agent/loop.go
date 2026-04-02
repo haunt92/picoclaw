@@ -1918,7 +1918,23 @@ turnLoop:
 					providerCtx,
 					activeCandidates,
 					func(ctx context.Context, provider, model string) (*providers.LLMResponse, error) {
-						return activeProvider.Chat(ctx, messagesForCall, toolDefsForCall, model, llmOpts)
+						primaryProvider := resolvedCandidateProvider(activeCandidates, cfg.Agents.Defaults.Provider)
+						if provider == primaryProvider && model == llmModel {
+							return activeProvider.Chat(ctx, messagesForCall, toolDefsForCall, model, llmOpts)
+						}
+
+						candidateCfg, err := resolvedModelConfigForCandidate(cfg, provider, model, ts.agent.Workspace)
+						if err != nil {
+							return nil, err
+						}
+						candidateProvider, _, err := providers.CreateProviderFromConfig(candidateCfg)
+						if err != nil {
+							return nil, fmt.Errorf("failed to initialize fallback provider %s/%s: %w", provider, model, err)
+						}
+						if stateful, ok := candidateProvider.(providers.StatefulProvider); ok {
+							defer stateful.Close()
+						}
+						return candidateProvider.Chat(ctx, messagesForCall, toolDefsForCall, model, llmOpts)
 					},
 				)
 				if fbErr != nil {

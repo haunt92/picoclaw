@@ -34,6 +34,11 @@ LOCAL_TAR_PATH="${LOCAL_TAR_PATH:-${REPO_ROOT}/build/picoclaw-launcher-local-lin
 COMPOSE_FILE="${COMPOSE_FILE:-docker/docker-compose.yml}"
 SERVICE_NAME="${SERVICE_NAME:-picoclaw-launcher}"
 CONTAINER_NAME="${CONTAINER_NAME:-picoclaw-launcher-cloudflare}"
+DEPLOY_CLOUDFLARE="${DEPLOY_CLOUDFLARE:-1}"
+CLOUDFLARE_COMPOSE_FILE="${CLOUDFLARE_COMPOSE_FILE:-docker/docker-compose.cloudflared.yml}"
+CLOUDFLARE_SERVICE_NAME="${CLOUDFLARE_SERVICE_NAME:-cloudflared}"
+CLOUDFLARE_CONTAINER_NAME="${CLOUDFLARE_CONTAINER_NAME:-picoclaw-cloudflared}"
+CLOUDFLARE_ENV_FILE="${CLOUDFLARE_ENV_FILE:-.env}"
 
 mkdir -p "$(dirname "${LOCAL_TAR_PATH}")"
 
@@ -64,6 +69,16 @@ fi
 sudo docker load -i "${REMOTE_TAR_PATH}"
 cd "${PI_PROJECT_DIR}"
 sudo \$COMPOSE_BIN -f "${COMPOSE_FILE}" --profile launcher up -d --force-recreate --no-build "${SERVICE_NAME}"
+
+if [ "${DEPLOY_CLOUDFLARE}" = "1" ]; then
+  if [ -f "${CLOUDFLARE_COMPOSE_FILE}" ] && grep -Eq '^CLOUDFLARED_TUNNEL_TOKEN=.+' "${CLOUDFLARE_ENV_FILE}" 2>/dev/null; then
+    sudo \$COMPOSE_BIN --env-file "${CLOUDFLARE_ENV_FILE}" -f "${CLOUDFLARE_COMPOSE_FILE}" up -d --force-recreate "${CLOUDFLARE_SERVICE_NAME}"
+    sudo docker ps --filter "name=${CLOUDFLARE_CONTAINER_NAME}" --format '{{.Names}} {{.Status}}'
+  else
+    echo "Skipping cloudflared deploy: ${CLOUDFLARE_ENV_FILE} does not contain CLOUDFLARED_TUNNEL_TOKEN."
+  fi
+fi
+
 sudo docker exec "${CONTAINER_NAME}" picoclaw version
 rm -f "${REMOTE_TAR_PATH}"
 EOF_REMOTE
